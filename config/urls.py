@@ -50,6 +50,7 @@ urlpatterns = [
     path("api/auth/logout/", auth.sign_out),
     path("api/auth/me/", auth.me),
     path("api/auth/change-password/", auth.change_password),
+    path("api/auth/change-password/otp/", auth.request_password_otp),
     path("api/auth/forgot-password/", auth.RecoveryView.as_view()),
     path("api/auth/reset-password/", auth.ResetView.as_view()),
     path("api/auth/verify-email/", auth.VerifyView.as_view()),

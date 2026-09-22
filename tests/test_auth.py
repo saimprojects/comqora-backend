@@ -1,4 +1,6 @@
+import re
 import socket
+from datetime import timedelta
 from smtplib import SMTPAuthenticationError
 from unittest.mock import patch
 
@@ -7,10 +9,11 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core import mail, signing
 from django.core.cache import cache
 from django.test import RequestFactory, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from apps.accounts.admin import SellFlowUserAdmin
-from apps.accounts.models import User
+from apps.accounts.models import PasswordChangeOTP, User
 from apps.core.models import Workspace
 from tests.billing_fixtures import paid_workspace
 
@@ -232,13 +235,83 @@ class AuthenticationTests(APITestCase):
         self.client.post("/api/auth/login/", credentials)
         other.post("/api/auth/login/", credentials)
         self.assertEqual(other.get("/api/auth/me/").status_code, 200)
+        self.assertEqual(
+            self.client.post(
+                "/api/auth/change-password/otp/", {"current_password": credentials["password"]}
+            ).status_code,
+            200,
+        )
+        code = re.search(r"code is (\d{6})", mail.outbox[-1].body).group(1)
         response = self.client.post(
             "/api/auth/change-password/",
-            {"current_password": credentials["password"], "password": "NewPassword!12345"},
+            {
+                "current_password": credentials["password"],
+                "password": "NewPassword!12345",
+                "otp": code,
+            },
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)
         self.assertEqual(other.get("/api/auth/me/").status_code, 403)
+        self.assertFalse(PasswordChangeOTP.objects.filter(user=self.user).exists())
+
+    def test_password_otp_required_expiry_resend_and_attempt_limit(self):
+        self.client.force_authenticate(self.user)
+        request = {"current_password": "SecureTesting!2026"}
+        payload = {**request, "password": "ReplacementSecure!2026"}
+        self.assertEqual(self.client.post("/api/auth/change-password/", payload).status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                "/api/auth/change-password/otp/", {"current_password": "wrong"}
+            ).status_code,
+            400,
+        )
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(
+            self.client.post("/api/auth/change-password/otp/", request).status_code, 200
+        )
+        code = re.search(r"code is (\d{6})", mail.outbox[-1].body).group(1)
+        challenge = PasswordChangeOTP.objects.get(user=self.user)
+        self.assertNotEqual(challenge.digest, code)
+        self.assertEqual(
+            self.client.post("/api/auth/change-password/otp/", request).status_code, 429
+        )
+        for _ in range(5):
+            self.assertEqual(
+                self.client.post(
+                    "/api/auth/change-password/", {**payload, "otp": "invalid"}
+                ).status_code,
+                400,
+            )
+        self.assertEqual(
+            self.client.post("/api/auth/change-password/", {**payload, "otp": code}).status_code,
+            400,
+        )
+        PasswordChangeOTP.objects.filter(user=self.user).update(
+            created_at=timezone.now() - timedelta(minutes=2)
+        )
+        self.assertEqual(
+            self.client.post("/api/auth/change-password/otp/", request).status_code, 200
+        )
+        code = re.search(r"code is (\d{6})", mail.outbox[-1].body).group(1)
+        PasswordChangeOTP.objects.filter(user=self.user).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        self.assertEqual(
+            self.client.post("/api/auth/change-password/", {**payload, "otp": code}).status_code,
+            400,
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(request["current_password"]))
+
+    @patch("apps.accounts.api.send_mail", side_effect=TimeoutError())
+    def test_password_otp_mail_failure_cannot_change_password(self, send):
+        self.client.force_authenticate(self.user)
+        result = self.client.post(
+            "/api/auth/change-password/otp/", {"current_password": "SecureTesting!2026"}
+        )
+        self.assertEqual(result.status_code, 503)
+        self.assertEqual(PasswordChangeOTP.objects.get(user=self.user).digest, "")
 
     def test_repeated_bad_logins_are_locked(self):
         for _ in range(8):

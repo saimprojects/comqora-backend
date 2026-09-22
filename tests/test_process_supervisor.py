@@ -7,6 +7,30 @@ import deploy
 
 
 class CombinedProcessTests(unittest.TestCase):
+    def test_pending_migrations_block_every_start_mode(self):
+        for mode in ("web", "worker", "all"):
+            with (
+                self.subTest(mode=mode),
+                patch("deploy.sys.argv", ["deploy.py", mode]),
+                patch("deploy.os.chdir"),
+                patch("deploy.subprocess.run") as run,
+                patch("deploy.os.execv") as worker,
+                patch("deploy.os.execvp") as web,
+                patch("deploy.run_combined") as combined,
+            ):
+
+                def check(command, **kwargs):
+                    if "migrate" in command:
+                        self.assertIn("--check", command)
+                        raise subprocess.CalledProcessError(1, command)
+
+                run.side_effect = check
+                with self.assertRaisesRegex(SystemExit, "python manage.py migrate --noinput"):
+                    deploy.main()
+                worker.assert_not_called()
+                web.assert_not_called()
+                combined.assert_not_called()
+
     @patch("deploy.os.killpg", create=True)
     @patch("deploy.signal.signal")
     @patch("deploy.subprocess.Popen")

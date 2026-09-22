@@ -25,6 +25,7 @@ from rest_framework.views import APIView
 from apps.core.api import audit
 from apps.core.models import Workspace
 
+from . import password_otp
 from .access import LOCKED_DETAIL, SUPPORT_CONTACT, locked_payload
 from .models import User
 
@@ -210,17 +211,36 @@ def sign_out(request):
 
 
 @api_view(["POST"])
+def request_password_otp(request):
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        if not user.check_password(request.data.get("current_password", "")):
+            return Response({"detail": "Current password is incorrect."}, status=400)
+        data, status = password_otp.issue(user, send_account_email)
+        return Response(data, status=status)
+
+
+@api_view(["POST"])
 def change_password(request):
-    if not request.user.check_password(request.data.get("current_password", "")):
-        return Response({"detail": "Current password is incorrect."}, status=400)
-    try:
-        validate_password(request.data.get("password", ""), request.user)
-    except DjangoValidationError as exc:
-        return Response({"password": exc.messages}, status=400)
-    request.user.set_password(request.data["password"])
-    request.user.save()
-    update_session_auth_hash(request, request.user)
-    audit(request, "auth.password_changed")
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        if not user.check_password(request.data.get("current_password", "")):
+            return Response({"detail": "Current password is incorrect."}, status=400)
+        try:
+            validate_password(request.data.get("password", ""), user)
+        except DjangoValidationError as exc:
+            return Response({"password": exc.messages}, status=400)
+        if not password_otp.verify(user, request.data.get("otp", "")):
+            return Response(
+                {
+                    "detail": "Invalid or expired code. Request a new code after five failed attempts."
+                },
+                status=400,
+            )
+        user.set_password(request.data["password"])
+        user.save(update_fields=["password"])
+        audit(request, "auth.password_changed")
+    update_session_auth_hash(request, user)
     return Response({"detail": "Password updated. Other sessions have been invalidated."})
 
 

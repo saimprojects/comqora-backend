@@ -3,6 +3,14 @@ from django.db import models
 from django.db.models.functions import Lower
 
 
+class PasswordChangeOTP(models.Model):
+    user = models.OneToOneField("User", on_delete=models.CASCADE)
+    digest = models.CharField(max_length=64)
+    created_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+
 class User(AbstractUser):
     DASHBOARD_PENDING = "PENDING"
     DASHBOARD_ACTIVE = "ACTIVE"

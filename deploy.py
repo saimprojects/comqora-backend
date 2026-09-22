@@ -82,6 +82,14 @@ def main():
         ],
         check=True,
     )
+    try:
+        subprocess.run([sys.executable, "manage.py", "migrate", "--check", "--noinput"], check=True)
+    except subprocess.CalledProcessError:
+        raise SystemExit(
+            "Database migration check failed. Check database connectivity and run "
+            "'python manage.py migrate --noinput' against this service's database. "
+            "Set the same command as Railway's Pre-deploy Command before redeploying."
+        ) from None
     if mode == "worker":
         os.execv(sys.executable, [sys.executable, "manage.py", "sync_tracking", "--loop"])
     subprocess.run([sys.executable, "manage.py", "collectstatic", "--noinput"], check=True)
