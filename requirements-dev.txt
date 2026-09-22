@@ -1,0 +1,3 @@
+-r requirements.lock
+ruff>=0.14,<0.15
+reportlab==4.4.9

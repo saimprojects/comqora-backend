@@ -1,0 +1,42 @@
+[14/Sep/2026 13:05:58] "GET /api/health/ HTTP/1.1" 200 43
+Forbidden: /api/auth/me/
+Forbidden: /api/auth/me/
+[14/Sep/2026 13:54:42] "GET /api/auth/me/ HTTP/1.1" 403 58
+[14/Sep/2026 13:54:52] "GET /api/auth/csrf/ HTTP/1.1" 200 80
+Bad Request: /api/auth/login/
+Bad Request: /api/auth/login/
+[14/Sep/2026 13:54:52] "POST /api/auth/login/ HTTP/1.1" 400 44
+[14/Sep/2026 13:54:54] "GET /api/auth/csrf/ HTTP/1.1" 200 80
+Bad Request: /api/auth/login/
+Bad Request: /api/auth/login/
+[14/Sep/2026 13:54:55] "POST /api/auth/login/ HTTP/1.1" 400 44
+[14/Sep/2026 13:55:02] "GET /api/auth/csrf/ HTTP/1.1" 200 80
+[14/Sep/2026 13:55:02] "POST /api/auth/login/ HTTP/1.1" 200 157
+[14/Sep/2026 13:55:02] "GET /api/auth/me/ HTTP/1.1" 200 157
+[14/Sep/2026 13:55:03] "GET /api/analytics/?start=2026-08-16&end=2026-09-14 HTTP/1.1" 200 11723
+[14/Sep/2026 13:55:17] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:55:27] "GET /api/team/ HTTP/1.1" 200 176
+[14/Sep/2026 13:56:21] "GET /api/analytics/?start=2026-08-16&end=2026-09-14 HTTP/1.1" 200 11723
+[14/Sep/2026 13:56:26] "GET /api/orders/?page=1&search=&status= HTTP/1.1" 200 8627
+[14/Sep/2026 13:56:29] "GET /api/customers/?page=1&page_size=12&search= HTTP/1.1" 200 354
+[14/Sep/2026 13:56:33] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:56:33] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:56:48] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:03] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:57:03] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:18] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:33] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:57:34] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:35] "GET /api/auth/csrf/ HTTP/1.1" 200 80
+[14/Sep/2026 13:57:35] "POST /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/sync-tracking/ HTTP/1.1" 200 95
+[14/Sep/2026 13:57:35] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:57:35] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:50] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:57:57] "GET /api/orders/?page=1&search=&status= HTTP/1.1" 200 8627
+[14/Sep/2026 13:59:02] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:59:02] "GET /api/workspace/ HTTP/1.1" 200 242
+[14/Sep/2026 13:59:17] "GET /api/orders/8d1ae008-a88b-44e4-a395-9dd893d045d0/ HTTP/1.1" 200 5731
+[14/Sep/2026 13:59:41] "GET /api/orders/?page=1&search=&status= HTTP/1.1" 200 8627
+[14/Sep/2026 14:04:51] "GET /api/orders/?page=1&search=&status= HTTP/1.1" 200 8627
+[14/Sep/2026 14:07:24] "GET /api/auth/me/ HTTP/1.1" 200 157
+[14/Sep/2026 14:07:25] "GET /api/orders/?page=1&search=&status= HTTP/1.1" 200 8627

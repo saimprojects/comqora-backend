@@ -1,0 +1,14 @@
+.venv
+env
+venv
+.env
+.env.*
+!.env.example
+!.env.production.example
+.git
+.ruff_cache
+tests
+*.sqlite3
+__pycache__
+staticfiles
+*.log

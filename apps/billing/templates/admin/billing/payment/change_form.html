@@ -1,0 +1,22 @@
+{% extends "admin/change_form.html" %}
+
+{% block form_top %}
+  {{ block.super }}
+  {% if original %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Payment verification</h2>
+        {% if original.status == "PENDING" and has_change_permission %}
+          <p>Check the screenshot and transaction reference against your bank statement, then approve this payment to activate or renew access.</p>
+          <p>To reject, enter a reason in <strong>Review note</strong> below. Your note is saved when you click Reject payment.</p>
+          <button type="submit" name="_approve_payment" value="1" class="btn btn-success me-2">Approve payment &amp; activate access</button>
+          <button type="submit" name="_reject_payment" value="1" class="btn btn-danger">Reject payment</button>
+        {% elif original.status == "AWAITING_PROOF" %}
+          <p class="mb-0">Waiting for the customer to submit a payment screenshot. Approval becomes available once the payment is Pending.</p>
+        {% else %}
+          <p class="mb-0">This payment is {{ original.get_status_display }}. It cannot be reviewed again.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
