@@ -8,6 +8,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core import signing
 from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import transaction
@@ -35,7 +36,7 @@ def send_account_email(subject, message, user):
     """Keep mail outages from crashing account creation or exposing SMTP details."""
     try:
         sent = send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
-    except (OSError, SMTPException) as exc:
+    except (OSError, SMTPException, ImportError, ImproperlyConfigured, ValueError) as exc:
         # Exception text may contain recipients or provider credentials; log only its type.
         logger.error(
             "Account email delivery failed (%s). Check SMTP configuration.", type(exc).__name__

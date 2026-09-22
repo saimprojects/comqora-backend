@@ -190,6 +190,29 @@ class AuthenticationTests(APITestCase):
         self.assertEqual(Workspace.objects.count(), 2)
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 403)
 
+    @override_settings(EMAIL_BACKEND="smtp.EmailBackend", REQUIRE_EMAIL_VERIFICATION=True)
+    def test_invalid_mail_backend_does_not_hide_created_account(self):
+        result = self.client.post(
+            "/api/auth/register/",
+            {
+                "first_name": "New",
+                "email": "new@test.example",
+                "password": "NewSecurePass!2026",
+                "workspace_name": "New store",
+            },
+        )
+        self.assertEqual(result.status_code, 201)
+        self.assertTrue(result.data["verification_required"])
+        self.assertFalse(result.data["verification_email_sent"])
+        self.assertTrue(result.data["email_warning"])
+        user = User.objects.get(email="new@test.example")
+        self.assertFalse(user.email_verified)
+        self.assertFalse(user.has_dashboard_access)
+        for route in ["resend-verification", "forgot-password"]:
+            response = self.client.post(f"/api/auth/{route}/", {"email": user.email})
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn("smtp", str(response.data))
+
     @patch("apps.accounts.api.send_mail", return_value=0)
     def test_resend_does_not_claim_delivery_when_backend_accepts_no_messages(self, send):
         self.client.force_authenticate(self.user)

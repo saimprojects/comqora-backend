@@ -15,6 +15,16 @@ from apps.core.storage import AdminStaticFilesStorage
 class DeploymentChecksTests(SimpleTestCase):
     @override_settings(
         DEBUG=False,
+        FRONTEND_URL="https://comqora.com",
+        ALLOWED_HOSTS=["comqora.com"],
+        REQUIRE_EMAIL_VERIFICATION=True,
+        EMAIL_BACKEND="smtp.EmailBackend",
+    )
+    def test_rejects_invalid_backend_import_before_accepting_signups(self):
+        self.assertEqual([error.id for error in production_config(None)], ["comqora.E005"])
+
+    @override_settings(
+        DEBUG=False,
         FRONTEND_URL="http://localhost:5173",
         ALLOWED_HOSTS=["*"],
         REQUIRE_EMAIL_VERIFICATION=True,

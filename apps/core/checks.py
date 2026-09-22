@@ -2,6 +2,8 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.checks import Error, register
+from django.core.exceptions import ImproperlyConfigured
+from django.core.mail import get_connection
 
 
 @register("comqora", deploy=True)
@@ -9,6 +11,17 @@ def production_config(app_configs, **kwargs):
     if settings.DEBUG:
         return []  # Django's own deployment checks reject DEBUG=True.
     errors = []
+    # Constructing a backend validates its import/configuration without sending mail.
+    try:
+        get_connection()
+    except (ImportError, ImproperlyConfigured, ValueError, TypeError):
+        errors.append(
+            Error(
+                "EMAIL_BACKEND could not be initialized. For SMTP use "
+                "django.core.mail.backends.smtp.EmailBackend and check email settings.",
+                id="comqora.E005",
+            )
+        )
     frontend = urlsplit(settings.FRONTEND_URL)
     if (
         frontend.scheme != "https"
