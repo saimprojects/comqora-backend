@@ -27,6 +27,7 @@ class Plan(models.Model):
 
 
 class PaymentBank(models.Model):
+    icon = models.BinaryField(null=True, blank=True, editable=False)
     bank_name = models.CharField(max_length=120)
     account_title = models.CharField(max_length=160)
     account_number = models.CharField(max_length=80)

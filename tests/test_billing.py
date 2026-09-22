@@ -11,6 +11,7 @@ from PIL import Image
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.billing.forms import PaymentBankForm
 from apps.billing.models import Payment, PaymentBank, Plan, Subscription
 from apps.billing.services import next_month, review_payment
 from apps.core.models import Workspace
@@ -47,6 +48,46 @@ class BillingTests(APITestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         return Payment.objects.get(pk=response.data["id"])
+
+    def test_bank_icon_upload_preserve_remove_and_checkout_url(self):
+        output = io.BytesIO()
+        Image.new("RGBA", (300, 100)).save(output, format="PNG")
+        data = {
+            "bank_name": "Test Bank",
+            "account_title": "Comqora",
+            "account_number": "123456",
+            "active": True,
+        }
+        form = PaymentBankForm(
+            data,
+            {"icon_upload": SimpleUploadedFile("bank.png", output.getvalue())},
+            instance=self.bank,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        bank = form.save()
+        with Image.open(io.BytesIO(bytes(bank.icon))) as icon:
+            self.assertEqual(icon.size, (256, 85))
+        banks = self.client.get("/api/billing/checkout/").data["banks"]
+        self.assertTrue(banks[0]["icon_url"].endswith(f"/api/billing/banks/{bank.pk}/icon/"))
+        self.assertNotIn("icon", banks[0])
+        response = self.client.get(f"/api/billing/banks/{bank.pk}/icon/")
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, bytes(bank.icon))
+        form = PaymentBankForm(data, instance=bank)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertTrue(form.save().icon)
+        form = PaymentBankForm({**data, "remove_icon": True}, instance=bank)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.save().icon)
+        self.assertEqual(self.client.get(f"/api/billing/banks/{bank.pk}/icon/").status_code, 404)
+
+    def test_bank_icon_rejects_non_images(self):
+        form = PaymentBankForm(
+            {"bank_name": "Test", "account_title": "Test", "account_number": "123"},
+            {"icon_upload": SimpleUploadedFile("bank.svg", b"<svg></svg>")},
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("icon_upload", form.errors)
 
     def submit(self, payment):
         output = io.BytesIO()

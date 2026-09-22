@@ -4,6 +4,7 @@ import warnings
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
@@ -73,11 +74,27 @@ def checkout(request):
     if request.method == "GET":
         return Response(
             {
-                "banks": list(
-                    PaymentBank.objects.filter(active=True).values(
-                        "id", "bank_name", "account_title", "account_number", "iban", "instructions"
-                    )
-                ),
+                "banks": [
+                    {
+                        **{
+                            key: getattr(bank, key)
+                            for key in [
+                                "id",
+                                "bank_name",
+                                "account_title",
+                                "account_number",
+                                "iban",
+                                "instructions",
+                            ]
+                        },
+                        "icon_url": request.build_absolute_uri(
+                            reverse("billing-bank-icon", args=[bank.pk])
+                        )
+                        if bank.icon
+                        else None,
+                    }
+                    for bank in PaymentBank.objects.filter(active=True)
+                ],
                 "subscription": subscription_data(request.user),
                 "payments": [
                     payment_data(p)
@@ -117,6 +134,16 @@ def checkout(request):
             },
         )
     return Response(payment_data(payment), status=201)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def bank_icon(request, pk):
+    bank = get_object_or_404(PaymentBank, pk=pk, icon__isnull=False)
+    response = HttpResponse(bytes(bank.icon), content_type="image/png")
+    response["Cache-Control"] = "no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 class ProofInput(serializers.Serializer):

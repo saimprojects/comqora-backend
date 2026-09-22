@@ -3,7 +3,7 @@
   "build": { "builder": "DOCKERFILE", "dockerfilePath": "Dockerfile" },
   "deploy": {
     "preDeployCommand": ["python manage.py migrate --noinput"],
-    "startCommand": "python deploy.py web",
+    "startCommand": "python deploy.py all",
     "healthcheckPath": "/api/health/",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

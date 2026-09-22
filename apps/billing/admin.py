@@ -4,6 +4,7 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
+from .forms import PaymentBankForm
 from .models import Payment, PaymentBank, Plan, Subscription
 from .services import review_payment
 
@@ -17,8 +18,19 @@ class PlanAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentBank)
 class PaymentBankAdmin(admin.ModelAdmin):
-    list_display = ["bank_name", "account_title", "account_number", "active"]
+    form = PaymentBankForm
+    readonly_fields = ["icon_preview"]
+    list_display = ["icon_preview", "bank_name", "account_title", "account_number", "active"]
     list_filter = ["active"]
+
+    @admin.display(description="Icon")
+    def icon_preview(self, obj):
+        if not obj or not obj.icon:
+            return "No icon uploaded"
+        return format_html(
+            '<img src="{}" width="64" height="64" style="object-fit:contain" alt="Bank icon">',
+            reverse("billing-bank-icon", args=[obj.pk]),
+        )
 
 
 @admin.register(Subscription)
