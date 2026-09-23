@@ -8,6 +8,7 @@ from apps.accounts import api as auth
 from apps.catalog.api import CategoryViewSet, PackagingViewSet, ProductViewSet, StockBatchViewSet
 from apps.core.health import health
 from apps.core.public import BlogDetail, BlogList, EnquiryCreate, PublicConfig
+from apps.core.seo import sitemap_blog, sitemap_index, sitemap_pages
 from apps.core.views import workspace, workspace_logo
 from apps.finance.api import ExpenseViewSet, activity, analytics
 from apps.finance.banking_api import BankAccountViewSet, BankEntryViewSet, SettlementImportViewSet
@@ -35,6 +36,9 @@ for route, view in [
     router.register(route, view)
 
 urlpatterns = [
+    path("api/public/sitemap.xml", sitemap_index),
+    path("api/public/sitemap-pages.xml", sitemap_pages),
+    path("api/public/sitemap-blog-<int:page>.xml", sitemap_blog),
     path("api/billing/", include("apps.billing.urls")),
     path("api/assistant/", include("apps.assistant.urls")),
     path("api/public/blog/", BlogList.as_view()),

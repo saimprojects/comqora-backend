@@ -1,4 +1,4 @@
-"""Railway/Docker process entry points; no shell expansion or migrations per replica."""
+"""Railway/Docker entry points with serialized migration bootstrap in combined mode."""
 
 import os
 import signal
@@ -83,6 +83,9 @@ def main():
         check=True,
     )
     try:
+        if mode == "all":
+            print("Applying database migrations before starting web and worker...", flush=True)
+            subprocess.run([sys.executable, "manage.py", "migrate_deployment"], check=True)
         subprocess.run([sys.executable, "manage.py", "migrate", "--check", "--noinput"], check=True)
     except subprocess.CalledProcessError:
         raise SystemExit(

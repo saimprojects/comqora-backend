@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": { "builder": "DOCKERFILE", "dockerfilePath": "Dockerfile" },
   "deploy": {
-    "preDeployCommand": ["python manage.py migrate --noinput"],
+    "preDeployCommand": ["python manage.py migrate_deployment"],
     "startCommand": "python deploy.py all",
     "healthcheckPath": "/api/health/",
     "healthcheckTimeout": 300,

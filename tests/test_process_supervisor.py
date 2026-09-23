@@ -7,6 +7,33 @@ import deploy
 
 
 class CombinedProcessTests(unittest.TestCase):
+    @patch("deploy.os.chdir")
+    @patch("deploy.sys.argv", ["deploy.py", "all"])
+    @patch("deploy.run_combined", return_value=0)
+    @patch("deploy.subprocess.run")
+    def test_combined_bootstrap_applies_migrations_before_starting(self, run, combined, chdir):
+        with self.assertRaises(SystemExit) as result:
+            deploy.main()
+        self.assertEqual(result.exception.code, 0)
+        commands = [call.args[0][2] for call in run.call_args_list]
+        self.assertLess(commands.index("migrate_deployment"), commands.index("migrate"))
+        self.assertLess(commands.index("migrate"), commands.index("collectstatic"))
+        combined.assert_called_once()
+
+    @patch("deploy.os.chdir")
+    @patch("deploy.sys.argv", ["deploy.py", "all"])
+    @patch("deploy.run_combined")
+    @patch("deploy.subprocess.run")
+    def test_migration_failure_never_starts_services(self, run, combined, chdir):
+        def execute(command, **kwargs):
+            if "migrate_deployment" in command:
+                raise subprocess.CalledProcessError(1, command)
+
+        run.side_effect = execute
+        with self.assertRaises(SystemExit):
+            deploy.main()
+        combined.assert_not_called()
+
     def test_pending_migrations_block_every_start_mode(self):
         for mode in ("web", "worker", "all"):
             with (
