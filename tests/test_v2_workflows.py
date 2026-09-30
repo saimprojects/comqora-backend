@@ -247,10 +247,10 @@ class WorkflowTests(APITestCase):
             {"name": "Remote", "kind": "FIXED", "amount": "15"},
         ]
         self.courier.save()
-        self.assertEqual(D(quote(self.courier, ".5", "SAME_CITY")["total"]), 140)
-        self.assertEqual(D(quote(self.courier, ".5", "SAME_PROVINCE")["total"]), 200)
-        self.assertEqual(D(quote(self.courier, ".5", "OUTSIDE_PROVINCE")["total"]), 380)
-        self.assertEqual(D(quote(self.courier, ".51", "SAME_CITY")["total"]), 200)
+        self.assertEqual(D(quote(self.courier, ".5", "SAME_CITY", D(1700))["total"]), 460)
+        self.assertEqual(D(quote(self.courier, ".5", "SAME_PROVINCE", D(1700))["total"]), 510)
+        self.assertEqual(D(quote(self.courier, ".5", "OUTSIDE_PROVINCE", D(1700))["total"]), 660)
+        self.assertEqual(D(quote(self.courier, ".51", "SAME_CITY", D(1700))["total"]), 510)
 
     def test_courier_rates_and_fees_are_snapshotted(self):
         self.courier.city_pricing = True
@@ -261,8 +261,78 @@ class WorkflowTests(APITestCase):
         self.courier.same_city_rate = D(900)
         self.courier.save()
         order.refresh_from_db()
-        self.assertEqual(order.courier_cost, 110)
-        self.assertEqual(order.courier_snapshot["extra_fees"][0]["cost"], "10.00")
+        self.assertEqual(order.courier_cost, 200)
+        self.assertEqual(order.courier_snapshot["extra_fees"][0]["cost"], "100.00")
+
+    def test_percentages_use_discounted_products_excluding_added_charges(self):
+        self.courier.tax_percent = D(2)
+        self.courier.extra_fees = [
+            {"name": "Custom tax", "kind": "PERCENT", "amount": "3"},
+            {"name": "Handling", "kind": "FIXED", "amount": "10"},
+        ]
+        self.courier.save()
+        order = self.create_order(discount="150", charges_mode="ADD", ad_cost="30")
+        self.assertEqual(order.courier_snapshot["percentage_basis"], "850.00")
+        self.assertEqual(order.courier_snapshot["tax"], "17.00")
+        self.assertEqual(order.courier_snapshot["extra_fees"][0]["cost"], "25.50")
+        self.assertEqual(order.courier_cost, D("252.50"))
+        response = self.client.get(
+            f"/api/couriers/{self.courier.pk}/quote/", {"product_total": "850"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total"], str(order.courier_cost))
+        free = self.create_order(discount="1000")
+        self.assertEqual(free.courier_snapshot["tax"], "0.00")
+        self.assertEqual(free.courier_cost, D("210"))
+        for bad in ("-1", "NaN", "Infinity", "oops"):
+            self.assertEqual(
+                self.client.get(
+                    f"/api/couriers/{self.courier.pk}/quote/", {"product_total": bad}
+                ).status_code,
+                400,
+            )
+
+    def test_inventory_edit_recalculates_cost_and_preserves_consumed_stock(self):
+        response = self.receipt()
+        batch = StockBatch.objects.get(pk=response.data["id"])
+        batch.remaining_quantity = 7
+        batch.reserved_quantity = 2
+        batch.save()
+        url = f"/api/stock-batches/{batch.pk}/"
+        response = self.client.patch(url, {"purchased_quantity": 12, "purchase_amount": "1200"})
+        self.assertEqual(response.status_code, 200, response.data)
+        batch.refresh_from_db()
+        self.assertEqual(batch.remaining_quantity, 9)
+        self.assertEqual(batch.reserved_quantity, 2)
+        self.assertEqual(batch.unit_cost, D("116.67"))
+        self.assertEqual(self.client.patch(url, {"purchased_quantity": 4}).status_code, 400)
+        self.assertEqual(self.client.patch(url, {"reference": "CORRECTED"}).status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.remaining_quantity, 9)
+
+    def test_inventory_cost_correction_preserves_existing_order_cost(self):
+        order = self.create_order()
+        original = order.product_cost
+        response = self.client.patch(
+            f"/api/stock-batches/{self.batch.pk}/", {"purchase_amount": "600"}
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.product_cost, original)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.unit_cost, D(600))
+        self.assertEqual(self.create_order().product_cost, D(600))
+
+    def test_inventory_edit_cannot_access_another_workspace(self):
+        other = paid_workspace(name="Other inventory")
+        self.batch.workspace = other
+        self.batch.save()
+        self.assertEqual(
+            self.client.patch(
+                f"/api/stock-batches/{self.batch.pk}/", {"reference": "NO"}
+            ).status_code,
+            404,
+        )
 
     def test_courier_invalid_fees_region_and_required_rates(self):
         url = f"/api/couriers/{self.courier.pk}/"

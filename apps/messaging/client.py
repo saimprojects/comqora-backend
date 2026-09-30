@@ -56,6 +56,14 @@ def request(method, path, payload=None):
             preload_content=False,
         )
         if not 200 <= response.status < 300:
+            if response.status == 400:
+                detail = response.read(4096)
+                if b"plain HTTP request was sent to HTTPS port" in detail:
+                    raise WahaError(
+                        "WAHA URL uses HTTP on an HTTPS port. Configure WAHA_BASE_URL with "
+                        "the correct HTTPS hostname and a matching TLS certificate.",
+                        status=400,
+                    )
             raise WahaError(
                 f"WAHA returned HTTP {response.status}. Check the session and server configuration.",
                 status=response.status,
@@ -65,6 +73,12 @@ def request(method, path, payload=None):
         if len(raw) > 1_048_576:
             raise ValueError()
         return json.loads(raw) if raw else {}
+    except urllib3.exceptions.SSLError:
+        raise WahaError(
+            "WAHA TLS certificate verification failed. Check the HTTPS hostname, "
+            "certificate expiry and certificate chain.",
+            uncertain=sending,
+        ) from None
     except (urllib3.exceptions.HTTPError, OSError):
         raise WahaError("WAHA connection timed out or failed.", uncertain=sending) from None
     except (ValueError, UnicodeError):

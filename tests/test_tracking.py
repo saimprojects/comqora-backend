@@ -124,6 +124,8 @@ class ProviderTests(SimpleTestCase):
         request.assert_not_called()
 
     def test_status_mapping_never_confuses_pending_or_failed_with_final(self):
+        for text in ("Loading", "Unloading", "Booking"):
+            self.assertEqual(normalize_status(text), "IN_TRANSIT")
         for text in (
             "Undelivered",
             "Not Delivered",
@@ -200,6 +202,12 @@ class ProviderTests(SimpleTestCase):
         with self.assertRaises(TrackingError) as caught:
             request_json("GET", "https://example.com", token="never-print")
         self.assertNotIn("never-print", str(caught.exception))
+
+    @patch("apps.logistics.providers.http.request")
+    def test_run_forbidden_explains_server_access_without_requesting_credentials(self, request):
+        request.return_value = Mock(status=403)
+        with self.assertRaisesRegex(TrackingError, "denied this server access"):
+            request_json("POST", "https://portal.runcourier.com/API/TrackOrder.php")
 
 
 @override_settings(

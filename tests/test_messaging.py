@@ -43,6 +43,21 @@ from tests.billing_fixtures import paid_workspace
 )
 class WahaClientTests(SimpleTestCase):
     @patch("apps.messaging.client.http.request")
+    def test_http_on_https_port_has_actionable_configuration_error(self, send):
+        send.return_value = Mock(status=400)
+        send.return_value.read.return_value = b"The plain HTTP request was sent to HTTPS port"
+        with self.assertRaisesRegex(WahaError, "correct HTTPS hostname") as err:
+            request("POST", "/api/sendText", {})
+        self.assertFalse(err.exception.uncertain)
+
+    @patch("apps.messaging.client.http.request")
+    def test_tls_failure_is_sanitized(self, send):
+        send.side_effect = urllib3.exceptions.SSLError("secret-never-expose")
+        with self.assertRaisesRegex(WahaError, "TLS certificate verification failed") as err:
+            request("GET", "/api/sessions/default")
+        self.assertNotIn("secret-never-expose", str(err.exception))
+
+    @patch("apps.messaging.client.http.request")
     def test_transport_has_fixed_origin_no_redirects_or_retries(self, send):
         send.return_value = Mock(status=200)
         send.return_value.read.return_value = b'{"id":"test"}'

@@ -69,7 +69,10 @@ class CourierViewSet(TenantViewSet):
         zone = serializers.ChoiceField(
             choices=["SAME_CITY", "SAME_PROVINCE", "OUTSIDE_PROVINCE"]
         ).run_validation(request.query_params.get("zone", "OUTSIDE_PROVINCE"))
-        return Response(quote(self.get_object(), weight, zone))
+        product_total = serializers.DecimalField(
+            max_digits=12, decimal_places=2, min_value=0
+        ).run_validation(request.query_params.get("product_total", "0"))
+        return Response(quote(self.get_object(), weight, zone, product_total))
 
 
 class WebhookPayload(serializers.Serializer):

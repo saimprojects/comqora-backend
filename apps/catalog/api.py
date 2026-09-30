@@ -175,7 +175,7 @@ class StockBatchSerializer(serializers.ModelSerializer):
         extra_kwargs = {"purchased_quantity": {"min_value": 1}, "unit_cost": {"required": False}}
 
     def validate(self, data):
-        if "purchase_amount" not in data and "unit_cost" not in data:
+        if not self.instance and "purchase_amount" not in data and "unit_cost" not in data:
             raise serializers.ValidationError({"purchase_amount": "Enter the purchase amount."})
         return data
 
@@ -216,11 +216,70 @@ class StockBatchSerializer(serializers.ModelSerializer):
             Product.objects.select_for_update().get(pk=data["product"].pk)
             return super().create(data)
 
+    @transaction.atomic
+    def update(self, instance, data):
+        from decimal import Decimal
+
+        from apps.core.models import Workspace
+        from apps.orders.services import money
+
+        # Serialize with creation, and lock products before batches as stock workflows do.
+        Workspace.objects.select_for_update().get(pk=instance.workspace_id)
+        Product.objects.select_for_update().get(pk=instance.product_id)
+        instance = StockBatch.objects.select_for_update().get(pk=instance.pk)
+        if "product" in data and data["product"].pk != instance.product_id:
+            raise serializers.ValidationError(
+                {"product": "A saved receipt's product cannot be changed."}
+            )
+        if not set(data).intersection(
+            {
+                "purchased_quantity",
+                "purchase_amount",
+                "purchase_mode",
+                "unit_cost",
+                "transport_cost",
+                "import_cost",
+                "extra_costs",
+            }
+        ):
+            return super().update(instance, data)
+        quantity = data.get("purchased_quantity", instance.purchased_quantity)
+        used = instance.purchased_quantity - instance.remaining_quantity
+        remaining = quantity - used
+        if remaining < instance.reserved_quantity:
+            raise serializers.ValidationError(
+                {
+                    "purchased_quantity": "Quantity cannot be below units already used or reserved for orders."
+                }
+            )
+        amount = data.get("purchase_amount", data.get("unit_cost", instance.purchase_amount))
+        mode = data.get("purchase_mode", instance.purchase_mode)
+        costs = data.get("extra_costs", instance.extra_costs)
+        extra = (
+            data.get("transport_cost", instance.transport_cost)
+            + data.get("import_cost", instance.import_cost)
+            + sum((Decimal(str(c["amount"])) for c in costs), Decimal(0))
+        )
+        unit_cost = money((amount / quantity if mode == "TOTAL" else amount) + extra / quantity)
+        if unit_cost > Decimal("9999999999.99"):
+            raise serializers.ValidationError(
+                {"purchase_amount": "Landed unit cost exceeds the supported amount."}
+            )
+        # Existing order allocations retain their original financial snapshots;
+        # corrected costs apply only to future allocations.
+        data.update(
+            remaining_quantity=remaining,
+            purchase_amount=amount,
+            unit_cost=unit_cost,
+            extra_costs=json_costs(costs),
+        )
+        return super().update(instance, data)
+
 
 class StockBatchViewSet(TenantViewSet):
     queryset = StockBatch.objects.select_related("product")
     serializer_class = StockBatchSerializer
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post", "patch", "put", "head", "options"]
     filterset_fields = ["product"]
     search_fields = ["reference", "product__name"]
 

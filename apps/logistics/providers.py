@@ -48,6 +48,12 @@ def request_json(method, url, *, payload=None, token=None):
             preload_content=False,
         )
         if response.status != 200:
+            if response.status == 403 and url.startswith(RUN_BASE):
+                raise TrackingError(
+                    "Run Courier denied this server access (HTTP 403). Check provider access rules "
+                    "or outbound IP allowlisting. No API token is used by this endpoint; "
+                    "automatic retry is scheduled."
+                )
             raise TrackingError(
                 f"Courier returned HTTP {response.status}. Check service access or credentials."
             )
@@ -136,6 +142,9 @@ def normalize_status(text):
     }:
         return "RETURN_IN_TRANSIT"
     transit = {
+        "booking",
+        "loading",
+        "unloading",
         "new booked",
         "booked",
         "picked up",

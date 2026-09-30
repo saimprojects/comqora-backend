@@ -27,7 +27,10 @@ def money(value):
     return Decimal(str(value)).quantize(Decimal(".01"), rounding=ROUND_HALF_UP)
 
 
-def quote(courier, weight, zone="OUTSIDE_PROVINCE"):
+def quote(courier, weight, zone="OUTSIDE_PROVINCE", product_total=ZERO):
+    product_total = money(product_total)
+    if not product_total.is_finite() or product_total < ZERO:
+        raise ValidationError("Product total must be a non-negative amount.")
     base = courier.base_rate
     if courier.provincial_pricing:
         base = (
@@ -41,13 +44,13 @@ def quote(courier, weight, zone="OUTSIDE_PROVINCE"):
         rounding=ROUND_CEILING
     )
     transport = base + extra * courier.additional_kg_rate
-    tax = money(transport * courier.tax_percent / 100)
+    tax = money(product_total * courier.tax_percent / 100)
     fees = [
         {
             **fee,
             "cost": str(
                 money(
-                    transport * Decimal(fee["amount"]) / 100
+                    product_total * Decimal(fee["amount"]) / 100
                     if fee["kind"] == "PERCENT"
                     else fee["amount"]
                 )
@@ -66,7 +69,8 @@ def quote(courier, weight, zone="OUTSIDE_PROVINCE"):
         "base_rate": str(base),
         "delivery_zone": zone,
         "extra_fees": fees,
-        "percentage_basis": str(transport),
+        "percentage_basis": str(product_total),
+        "percentage_basis_type": "DISCOUNTED_PRODUCT_TOTAL",
         "extra_weight_charge": str(extra * courier.additional_kg_rate),
         "tax_percent": str(courier.tax_percent),
         "tax": str(tax),
@@ -224,6 +228,9 @@ def create_order(workspace, data):
         cost += item_cost
     if order.discount > total:
         raise ValidationError({"discount": "Discount cannot exceed the subtotal."})
+    snapshot = quote(courier, order.weight, order.delivery_zone, total - order.discount)
+    order.courier_snapshot = snapshot
+    order.courier_cost = money(snapshot["total"])
     seen = set()
     for pack in packs:
         if pack["id"] in seen:
