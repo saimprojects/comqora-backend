@@ -195,7 +195,7 @@ class OrderViewSet(TenantViewSet):
 
         self.get_object()
         try:
-            result = sync_order(pk, workspace_id=request.user.workspace_id)
+            result = sync_order(pk, workspace_id=request.user.workspace_id, manual=True)
         except TrackingError as exc:
             return Response({"detail": str(exc)}, status=502)
         return Response(result)

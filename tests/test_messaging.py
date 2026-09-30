@@ -43,6 +43,19 @@ from tests.billing_fixtures import paid_workspace
 )
 class WahaClientTests(SimpleTestCase):
     @patch("apps.messaging.client.http.request")
+    def test_read_and_connect_timeouts_are_distinguishable_without_retries(self, send):
+        for failure, detail in [
+            (urllib3.exceptions.ReadTimeoutError(None, "/secret-path", "secret"), "12 seconds"),
+            (urllib3.exceptions.ConnectTimeoutError("secret"), "3 seconds"),
+        ]:
+            send.side_effect = failure
+            with self.assertRaisesRegex(WahaError, detail) as caught:
+                request("POST", "/api/sendText", {})
+            self.assertTrue(caught.exception.uncertain)
+            self.assertNotIn("secret", str(caught.exception))
+            self.assertFalse(send.call_args.kwargs["retries"])
+
+    @patch("apps.messaging.client.http.request")
     def test_http_on_https_port_has_actionable_configuration_error(self, send):
         send.return_value = Mock(status=400)
         send.return_value.read.return_value = b"The plain HTTP request was sent to HTTPS port"
@@ -471,6 +484,20 @@ class MessagingTests(APITestCase):
         self.assertEqual(result.data["account"]["session"], self.account.session)
         with override_settings(WAHA_SESSION_MODE="PLUS"):
             self.assertEqual(account_for(other).session, "sellflow-" + other.pk.hex)
+
+    @patch("apps.messaging.client.request")
+    def test_connection_refresh_clears_saved_error_without_resending_unknown_message(self, remote):
+        self.account.last_error = "WAHA connection timed out or failed."
+        self.account.save(update_fields=["last_error"])
+        message = self.queue(state="UNKNOWN", attempted_at=timezone.now())
+        remote.return_value = {"status": "WORKING"}
+        response = self.client.post("/api/whatsapp/account/", {"action": "status"})
+        self.assertEqual(response.status_code, 200)
+        self.account.refresh_from_db()
+        message.refresh_from_db()
+        self.assertEqual(self.account.last_error, "")
+        self.assertEqual(message.state, "UNKNOWN")
+        remote.assert_called_once_with("GET", f"/api/sessions/{self.account.session}")
 
     def test_configuration_hides_secrets_and_ignores_supplied_session(self):
         result = self.client.get("/api/whatsapp/account/")

@@ -258,6 +258,37 @@ class TrackingTests(APITestCase):
         Order.objects.filter(pk=self.order.pk).update(tracking_next_sync_at=None)
 
     @patch("apps.logistics.tracking.fetch_tracking")
+    def test_manual_check_bypasses_backoff_but_keeps_cooldown(self, fetch):
+        Order.objects.filter(pk=self.order.pk).update(
+            tracking_failures=20,
+            tracking_error="Courier returned HTTP 403.",
+            tracking_attempted_at=timezone.now() - timedelta(minutes=10),
+            tracking_next_sync_at=timezone.now() + timedelta(hours=1),
+        )
+        fetch.return_value = ("run_courier", [Checkpoint("Loading", self.stamp)])
+        self.assertEqual(sync_order(self.order.pk)["state"], "waiting")
+        fetch.assert_not_called()
+        response = self.client.post(f"/api/orders/{self.order.pk}/sync-tracking/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["state"], "updated")
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.tracking_error, "")
+        self.assertEqual(self.order.tracking_failures, 0)
+        self.assertIsNotNone(self.order.tracking_checked_at)
+        self.assertEqual(sync_order(self.order.pk, manual=True)["state"], "waiting")
+        self.assertEqual(fetch.call_count, 1)
+
+    @patch("apps.logistics.tracking.fetch_tracking")
+    def test_manual_check_does_not_override_active_worker_lease(self, fetch):
+        Order.objects.filter(pk=self.order.pk).update(
+            tracking_attempted_at=timezone.now() - timedelta(minutes=2),
+            tracking_lock_until=timezone.now() + timedelta(seconds=90),
+            tracking_lock_token=uuid.uuid4(),
+        )
+        self.assertEqual(sync_order(self.order.pk, manual=True)["state"], "waiting")
+        fetch.assert_not_called()
+
+    @patch("apps.logistics.tracking.fetch_tracking")
     def test_full_history_updates_profit_with_original_delivered_time(self, fetch):
         fetch.return_value = (
             "run_courier",

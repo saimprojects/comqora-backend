@@ -519,6 +519,7 @@ def messages(request):
                     "ack",
                     "provider_id",
                     "due_at",
+                    "attempted_at",
                     "sent_at",
                     "error",
                 )[:100]

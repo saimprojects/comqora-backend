@@ -129,7 +129,7 @@ def apply_checkpoints(order_id, source, checkpoints, lease_token):
     return True
 
 
-def sync_order(order_id, *, workspace_id=None):
+def sync_order(order_id, *, workspace_id=None, manual=False):
     """One short DB claim, HTTP outside transactions, one atomic history update."""
     now = timezone.now()
     qs = Order.objects.filter(pk=order_id)
@@ -153,20 +153,34 @@ def sync_order(order_id, *, workspace_id=None):
     if not order.tracking_id or order.status not in ACTIVE:
         return {"state": "idle", "detail": "Only dispatched, unresolved shipments are polled."}
     token = uuid.uuid4()
-    claimed = (
-        qs.filter(status__in=ACTIVE, tracking_mode="AUTO")
-        .filter(Q(tracking_next_sync_at__isnull=True) | Q(tracking_next_sync_at__lte=now))
-        .filter(Q(tracking_lock_until__isnull=True) | Q(tracking_lock_until__lte=now))
-        .update(
-            tracking_lock_token=token,
-            tracking_lock_until=now + timedelta(seconds=90),
-            tracking_attempted_at=now,
+    eligible = qs.filter(status__in=ACTIVE, tracking_mode="AUTO")
+    if manual:
+        # A user may retry a failed check before exponential backoff expires,
+        # but cannot hammer the provider or steal an active worker lease.
+        eligible = eligible.filter(
+            Q(tracking_attempted_at__isnull=True)
+            | Q(tracking_attempted_at__lte=now - timedelta(seconds=settings.TRACKING_POLL_SECONDS))
         )
+    else:
+        eligible = eligible.filter(
+            Q(tracking_next_sync_at__isnull=True) | Q(tracking_next_sync_at__lte=now)
+        )
+    claimed = eligible.filter(
+        Q(tracking_lock_until__isnull=True) | Q(tracking_lock_until__lte=now)
+    ).update(
+        tracking_lock_token=token,
+        tracking_lock_until=now + timedelta(seconds=90),
+        tracking_attempted_at=now,
     )
     if not claimed:
         return {
             "state": "waiting",
-            "detail": "Tracking is already refreshing or the next check is not due yet.",
+            "detail": (
+                "Tracking is already refreshing or was checked recently. Try again after "
+                f"{settings.TRACKING_POLL_SECONDS} seconds."
+                if manual
+                else "Tracking is already refreshing or the next check is not due yet."
+            ),
         }
     try:
         source, checkpoints = fetch_tracking(

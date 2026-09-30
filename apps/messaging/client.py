@@ -79,6 +79,27 @@ def request(method, path, payload=None):
             "certificate expiry and certificate chain.",
             uncertain=sending,
         ) from None
+    except urllib3.exceptions.ReadTimeoutError:
+        raise WahaError(
+            "WAHA did not respond within 12 seconds. "
+            "Check WAHA server load and session health; a send may still have succeeded.",
+            uncertain=sending,
+        ) from None
+    except urllib3.exceptions.NameResolutionError:
+        raise WahaError(
+            "WAHA hostname could not be resolved. Check WAHA_BASE_URL and server DNS.",
+            uncertain=sending,
+        ) from None
+    except urllib3.exceptions.NewConnectionError:
+        raise WahaError(
+            "WAHA connection could not be established. Check the configured port, firewall and WAHA service.",
+            uncertain=sending,
+        ) from None
+    except urllib3.exceptions.ConnectTimeoutError:
+        raise WahaError(
+            "WAHA connection timed out after 3 seconds. Check hosting outbound access and the WAHA firewall.",
+            uncertain=sending,
+        ) from None
     except (urllib3.exceptions.HTTPError, OSError):
         raise WahaError("WAHA connection timed out or failed.", uncertain=sending) from None
     except (ValueError, UnicodeError):

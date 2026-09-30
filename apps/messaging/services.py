@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import timedelta
 
@@ -264,6 +265,9 @@ def process_account(account_id):
         )
         return 1
     except client.WahaError as exc:
+        logging.getLogger(__name__).warning(
+            "WAHA %s failed: %s", "send" if sending else "session preflight", str(exc)
+        )
         if not sending:
             WhatsAppMessage.objects.filter(pk=message.pk).update(
                 state="PENDING",
