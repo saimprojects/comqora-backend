@@ -1,8 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal as D
+from importlib import import_module
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.apps import apps
+from django.db import transaction
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -25,6 +28,78 @@ from tests.billing_fixtures import paid_workspace
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
 )
 class WorkflowTests(APITestCase):
+    def recalculate_historical(self):
+        migration = import_module(
+            "apps.orders.migrations.0009_discounted_product_courier_percentages"
+        )
+        with transaction.atomic():
+            return migration.recalculate(apps, "default", self.workspace.pk)
+
+    def legacy_snapshot(self):
+        return {
+            "courier": "Historic contract",
+            "base_rate": "220.00",
+            "extra_weight_charge": "0.00",
+            "tax_percent": "4.00",
+            "tax": "8.80",
+            "fixed_charge": "0.00",
+            "return_rate": "50.00",
+            "total": "231.00",
+            "percentage_basis": "220.00",
+            "extra_fees": [
+                {"name": "Cash handling", "kind": "PERCENT", "amount": "1.00", "cost": "2.20"},
+            ],
+        }
+
+    def test_historical_percentages_use_saved_rates_and_are_idempotent(self):
+        for status in ("CREATED", "IN_TRANSIT", "DELIVERED", "RETURNED", "CANCELLED"):
+            order = self.create_order()
+            Order.objects.filter(pk=order.pk).update(
+                subtotal=2000,
+                discount=250,
+                courier_snapshot=self.legacy_snapshot(),
+                courier_cost=231,
+                status=status,
+                return_cost=50,
+            )
+        self.courier.tax_percent = D(20)
+        self.courier.base_rate = D(999)
+        self.courier.save()
+        self.assertEqual(self.recalculate_historical(), 5)
+        for order in Order.objects.filter(workspace=self.workspace):
+            self.assertEqual(order.courier_cost, D("307.50"))
+            self.assertEqual(order.courier_snapshot["tax"], "70.00")
+            self.assertEqual(order.courier_snapshot["extra_fees"][0]["cost"], "17.50")
+            self.assertEqual(order.customer_charges, 0)
+            self.assertEqual(order.return_cost, 50)
+        self.assertEqual(self.recalculate_historical(), 0)
+        self.assertEqual(
+            AuditEvent.objects.filter(action="order.courier_percentages_recalculated").count(), 5
+        )
+
+    def test_historical_added_charges_preserve_payments_and_actual_settlements(self):
+        order = self.create_order()
+        Order.objects.filter(pk=order.pk).update(
+            subtotal=2000,
+            discount=250,
+            courier_snapshot=self.legacy_snapshot(),
+            courier_cost=231,
+            charges_mode="ADD",
+            customer_charges=251,
+            actual_courier_cost=199,
+            actual_courier_cost_basis="ACTUAL",
+            advance_paid=100,
+            refunded_amount=10,
+        )
+        self.assertEqual(self.recalculate_historical(), 1)
+        order.refresh_from_db()
+        self.assertEqual(order.customer_charges, D("327.50"))
+        self.assertEqual(order.actual_courier_cost, 199)
+        self.assertEqual(order.advance_paid, 100)
+        self.assertEqual(order.refunded_amount, 10)
+        self.assertEqual(D(financials(order)["net_sale"]), D("2077.50"))
+        self.assertEqual(D(financials(order)["courier_cost"]), 199)
+
     def setUp(self):
         self.workspace = paid_workspace(name="Workflow tests")
         self.user = User.objects.create_user(
